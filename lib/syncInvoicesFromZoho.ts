@@ -1,4 +1,4 @@
-import { getZohoAccessToken, fetchZohoInvoicesLast30Days } from './zoho';
+import { getZohoAccessToken, fetchZohoInvoices } from './zoho';
 import { supabaseAdmin } from './supabaseAdmin';
 import { SyncStats } from '@/types/invoice';
 
@@ -16,7 +16,7 @@ export async function syncInvoicesFromZoho(): Promise<SyncStats> {
   const accessToken = await getZohoAccessToken();
 
   // Fetch ALL unpaid invoices from Zoho (with pagination)
-  const zohoInvoices = await fetchZohoInvoicesLast30Days(accessToken);
+  const zohoInvoices = await fetchZohoInvoices(accessToken);
   
   console.log(`Fetched ${zohoInvoices.length} unpaid invoices from Zoho`);
 
@@ -30,7 +30,9 @@ export async function syncInvoicesFromZoho(): Promise<SyncStats> {
     throw new Error(`Failed to fetch existing invoices: ${fetchError.message}`);
   }
 
-  const existingZohoIds = new Set(existingInvoices?.map((inv) => inv.zoho_invoice_id) || []);
+  const existingZohoIds = new Set(
+    (existingInvoices as { zoho_invoice_id: string }[] | null)?.map((inv) => inv.zoho_invoice_id) || []
+  );
   const currentZohoIds = new Set(zohoInvoices.map((inv) => inv.invoice_id));
 
   // Upsert new/updated unpaid invoices
@@ -60,7 +62,7 @@ export async function syncInvoicesFromZoho(): Promise<SyncStats> {
           internal_due_date: internalDueDate.toISOString().split('T')[0], // YYYY-MM-DD
           status: 'unpaid',
           last_synced_at: now,
-        },
+        } as any,
         {
           onConflict: 'zoho_invoice_id',
         }

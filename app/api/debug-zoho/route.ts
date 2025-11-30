@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getZohoAccessToken, fetchZohoInvoicesLast30Days } from '@/lib/zoho';
+import { getZohoAccessToken, fetchZohoInvoices } from '@/lib/zoho';
 
 export async function GET() {
   try {

@@ -51,7 +51,7 @@ export async function getZohoAccessToken(): Promise<string> {
  * Fetches ALL unpaid invoices from Zoho with pagination support
  * Fetches all unpaid invoices regardless of date
  */
-export async function fetchZohoInvoicesLast30Days(accessToken: string): Promise<ZohoInvoice[]> {
+export async function fetchZohoInvoices(accessToken: string): Promise<ZohoInvoice[]> {
   const orgId = process.env.ZOHO_ORG_ID;
   if (!orgId) {
     throw new Error('Missing ZOHO_ORG_ID');
