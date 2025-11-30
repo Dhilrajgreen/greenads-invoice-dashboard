@@ -5,6 +5,7 @@ import DashboardControls from './DashboardControls';
 import DashboardMetrics from './DashboardMetrics';
 import InvoiceTable from './InvoiceTable';
 import SyncProgressModal from './SyncProgressModal';
+import ChatBot from './ChatBot';
 import { Invoice } from '@/types/invoice';
 import { isOverdue, daysUntilDue } from '@/app/utils/invoiceHelpers';
 
@@ -258,8 +259,9 @@ export default function DashboardClient({ initialInvoices }: DashboardClientProp
         <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">
           Invoices {filteredInvoices.length !== invoices.length && `(${filteredInvoices.length} of ${invoices.length})`}
         </h2>
-        <InvoiceTable invoices={filteredInvoices} />
+        <InvoiceTable invoices={filteredInvoices}         />
       </div>
+      <ChatBot />
     </>
   );
 }
