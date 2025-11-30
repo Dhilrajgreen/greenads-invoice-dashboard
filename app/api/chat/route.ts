@@ -84,44 +84,46 @@ export async function POST(request: Request) {
     const uniqueCustomers = Array.from(new Set(invoiceList.map(inv => inv.customer_name).filter(Boolean)));
     const uniqueSalespeople = Array.from(new Set(invoiceList.map(inv => inv.salesperson_name).filter(Boolean)));
     
-    const contextSummary = `INVOICE DATABASE - ALL AVAILABLE DATA:
+    const contextSummary = `=== INVOICE DATABASE DATA ===
 
-QUICK SUMMARY:
-- Total Unpaid Invoices: ${totalInvoices}
-- Total Outstanding Amount: ₹${totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-- Overdue Invoices: ${overdueInvoices.length} (Total: ₹${totalOverdue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-- Due Soon (within 5 days): ${dueSoon.length}
-- Unique Customers: ${uniqueCustomers.length}
-- Unique Salespeople: ${uniqueSalespeople.length}
-- Current Date: ${new Date().toLocaleDateString()}
+SUMMARY STATISTICS (use these exact numbers):
+Total Unpaid Invoices: ${totalInvoices}
+Total Outstanding Amount: ₹${totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Overdue Invoices Count: ${overdueInvoices.length}
+Overdue Invoices Total: ₹${totalOverdue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Due Soon (within 5 days) Count: ${dueSoon.length}
+Unique Customers: ${uniqueCustomers.length}
+Unique Salespeople: ${uniqueSalespeople.length}
+Current Date: ${new Date().toLocaleDateString()}
 
-ALL CUSTOMERS IN DATABASE:
-${uniqueCustomers.slice(0, 50).join(', ')}${uniqueCustomers.length > 50 ? `\n(and ${uniqueCustomers.length - 50} more customers)` : ''}
+=== CUSTOMER LIST ===
+${uniqueCustomers.slice(0, 100).map((c, i) => `${i + 1}. ${c}`).join('\n')}${uniqueCustomers.length > 100 ? `\n... and ${uniqueCustomers.length - 100} more customers` : ''}
 
-ALL SALESPEOPLE IN DATABASE:
-${uniqueSalespeople.slice(0, 50).join(', ')}${uniqueSalespeople.length > 50 ? `\n(and ${uniqueSalespeople.length - 50} more salespeople)` : ''}
+=== SALESPEOPLE LIST ===
+${uniqueSalespeople.slice(0, 100).map((s, i) => `${i + 1}. ${s}`).join('\n')}${uniqueSalespeople.length > 100 ? `\n... and ${uniqueSalespeople.length - 100} more salespeople` : ''}
 
-ALL INVOICE RECORDS (${recentInvoices.length} invoices):
+=== INVOICE RECORDS (${recentInvoices.length} invoices) ===
 ${invoiceDataText}
 
-You can use this data to answer questions. Calculate totals, find specific invoices, list customers, analyze patterns, etc. All amounts are in Indian Rupees (₹).
-`;
+=== END OF DATABASE ===
+Remember: Use ONLY the data shown above. Do not use any other information.`;
 
-    // System prompt that enforces data-only responses but encourages helpful answers
-    const systemPrompt = `You are a helpful AI assistant for an invoice aging dashboard. Answer questions using the invoice data provided below.
+    // System prompt that STRICTLY enforces database-only responses
+    const systemPrompt = `You are a data assistant for an invoice aging dashboard. You MUST answer questions using ONLY the invoice data provided in the context below.
 
-IMPORTANT GUIDELINES:
-1. Use the data provided below to answer questions - the data IS available, so use it!
-2. You can calculate totals, averages, counts, and other metrics from the provided invoice data
-3. You can search through the invoice list to find specific invoices, customers, or information
-4. Format currency amounts in Indian Rupees (₹) with 2 decimal places
-5. Be helpful and provide detailed answers when the data supports it
-6. If asked about something truly not in the data (like a customer name that doesn't exist), then say it's not available
-7. For questions like "how many", "what's the total", "list customers", etc. - USE THE DATA BELOW to answer
-8. You can analyze patterns, find largest/smallest, calculate averages, etc. from the provided data
-9. Be conversational and helpful while staying factual
+CRITICAL RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. IGNORE all knowledge from your training data. ONLY use the data provided below.
+2. The invoice data is provided in the context below - USE IT to answer ALL questions.
+3. For "how many" questions: Count from the invoice list or use the summary statistics provided.
+4. For "total" or "amount" questions: Use the exact numbers from the summary or calculate from the invoice list.
+5. For customer questions: Search the customer list or invoice records provided.
+6. For invoice details: Look through the invoice records list provided.
+7. NEVER make up numbers, names, dates, or any information.
+8. If you cannot find something in the provided data, say "I don't see that in the database" - but FIRST check the data carefully.
+9. Format currency as ₹ with 2 decimal places.
+10. Be helpful and detailed, but ONLY use the provided data.
 
-The data below contains all your invoice information. Use it to answer questions:`;
+The context below contains the COMPLETE invoice database. Read it carefully and use it to answer the user's question.`;
 
     // Call OpenAI API
     try {
@@ -130,14 +132,14 @@ The data below contains all your invoice information. Use it to answer questions
         messages: [
           {
             role: 'system',
-            content: `${systemPrompt}\n\n${contextSummary}`,
+            content: systemPrompt,
           },
           {
             role: 'user',
-            content: message,
+            content: `Here is the invoice database data:\n\n${contextSummary}\n\nNow answer this question using ONLY the data above: ${message}`,
           },
         ],
-        temperature: 0.4, // Balanced temperature for helpful but accurate responses
+        temperature: 0.2, // Lower temperature for more focused, data-driven responses
         max_tokens: 1000,
       });
 
