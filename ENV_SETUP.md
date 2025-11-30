@@ -15,6 +15,8 @@ GOOGLE_SERVICE_ACCOUNT_EMAIL=your_service_account_email
 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=your_service_account_private_key
 GOOGLE_SHEETS_SPREADSHEET_ID=your_google_sheet_id
 GOOGLE_SHEETS_RANGE_NAME=OverdueInvoices!A1
+
+OPENAI_API_KEY=your_openai_api_key
 ```
 
 ## Notes
@@ -22,4 +24,5 @@ GOOGLE_SHEETS_RANGE_NAME=OverdueInvoices!A1
 - `.env.local` is gitignored and should not be committed
 - For Google service account private key, if it contains `\n` characters, they should be preserved as `\n` in the env file (not actual newlines)
 - The `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` should be the full private key string from the JSON key file
+- `OPENAI_API_KEY` is required for the AI chatbot feature. Get your API key from https://platform.openai.com/api-keys
 

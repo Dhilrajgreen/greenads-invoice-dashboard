@@ -3,6 +3,16 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { Invoice } from '@/types/invoice';
 import { isOverdue, daysSinceInvoice } from '@/app/utils/invoiceHelpers';
 import { formatCurrency } from '@/app/utils/currency';
+import OpenAI from 'openai';
+
+// Initialize OpenAI client only when API key is available
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+  return new OpenAI({ apiKey });
+}
 
 export async function POST(request: Request) {
   try {
@@ -21,7 +31,13 @@ export async function POST(request: Request) {
       });
     }
 
-    const messageLower = message.toLowerCase();
+    // Check if OpenAI API key is configured
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return NextResponse.json({
+        response: 'OpenAI API key is not configured. Please contact support.',
+      });
+    }
 
     // Fetch all invoices for analysis
     const { data: invoices, error } = await supabaseAdmin
@@ -39,7 +55,7 @@ export async function POST(request: Request) {
 
     const invoiceList = (invoices as Invoice[]) || [];
 
-    // Calculate metrics
+    // Calculate metrics for context
     const totalInvoices = invoiceList.length;
     const totalOutstanding = invoiceList.reduce((sum, inv) => sum + (inv.balance || 0), 0);
     const overdueInvoices = invoiceList.filter((inv) => isOverdue(inv));
@@ -51,145 +67,94 @@ export async function POST(request: Request) {
       return daysUntil >= 0 && daysUntil <= 5;
     });
 
-    // Question answering logic
-    let response = '';
+    // Format invoice data for context (limit to most recent 100 for token efficiency)
+    const recentInvoices = invoiceList.slice(0, 100);
+    const invoiceDataContext = recentInvoices.map((inv) => {
+      const dueDate = inv.internal_due_date ? new Date(inv.internal_due_date) : null;
+      const invoiceDate = inv.invoice_date ? new Date(inv.invoice_date) : null;
+      const daysOld = invoiceDate ? daysSinceInvoice(inv) : null;
+      const isOverdueInvoice = isOverdue(inv);
+      
+      return {
+        invoice_number: inv.invoice_number || 'N/A',
+        customer_name: inv.customer_name || 'Unknown',
+        customer_email: inv.customer_email || null,
+        customer_phone: inv.customer_phone || null,
+        salesperson_name: inv.salesperson_name || null,
+        invoice_date: invoiceDate ? invoiceDate.toLocaleDateString() : 'N/A',
+        invoice_total: inv.invoice_total || 0,
+        balance: inv.balance || 0,
+        internal_due_date: dueDate ? dueDate.toLocaleDateString() : 'N/A',
+        days_old: daysOld,
+        is_overdue: isOverdueInvoice,
+        zoho_status: inv.zoho_status || 'unpaid',
+      };
+    });
 
-    // Total invoices
-    if (
-      messageLower.includes('total') &&
-      (messageLower.includes('invoice') || messageLower.includes('count') || messageLower.includes('how many'))
-    ) {
-      response = `You have **${totalInvoices}** unpaid invoices in total.`;
-    }
-    // Total outstanding amount
-    else if (
-      messageLower.includes('total') &&
-      (messageLower.includes('outstanding') || messageLower.includes('amount') || messageLower.includes('balance') || messageLower.includes('due'))
-    ) {
-      response = `The total outstanding amount across all unpaid invoices is **${formatCurrency(totalOutstanding)}**.`;
-    }
-    // Overdue invoices
-    else if (messageLower.includes('overdue')) {
-      if (messageLower.includes('how many') || messageLower.includes('count')) {
-        response = `You have **${overdueInvoices.length}** overdue invoices.`;
-      } else if (messageLower.includes('amount') || messageLower.includes('total')) {
-        response = `The total amount overdue is **${formatCurrency(totalOverdue)}** across ${overdueInvoices.length} invoices.`;
-      } else {
-        response = `You have **${overdueInvoices.length}** overdue invoices with a total amount of **${formatCurrency(totalOverdue)}**.`;
-      }
-    }
-    // Due soon (within 5 days)
-    else if (messageLower.includes('due soon') || messageLower.includes('due in') || (messageLower.includes('due') && messageLower.includes('soon'))) {
-      const dueSoonTotal = dueSoon.reduce((sum, inv) => sum + (inv.balance || 0), 0);
-      response = `You have **${dueSoon.length}** invoices due within the next 5 days, totaling **${formatCurrency(dueSoonTotal)}**.`;
-    }
-    // Customer-related questions
-    else if (messageLower.includes('customer') || messageLower.includes('client')) {
-      const uniqueCustomers = new Set(invoiceList.map((inv) => inv.customer_name).filter(Boolean));
-      if (messageLower.includes('how many') || messageLower.includes('count')) {
-        response = `You have invoices from **${uniqueCustomers.size}** different customers.`;
-      } else if (messageLower.includes('list') || messageLower.includes('who')) {
-        const customerList = Array.from(uniqueCustomers).slice(0, 10).join(', ');
-        response = `Here are some of your customers: ${customerList}${uniqueCustomers.size > 10 ? ` (and ${uniqueCustomers.size - 10} more)` : ''}.`;
-      } else {
-        response = `You have invoices from **${uniqueCustomers.size}** different customers.`;
-      }
-    }
-    // Salesperson questions
-    else if (messageLower.includes('salesperson') || messageLower.includes('sales rep')) {
-      const salespeople = new Set(invoiceList.map((inv) => inv.salesperson_name).filter(Boolean));
-      response = `Invoices are associated with **${salespeople.size}** different salespeople.`;
-    }
-    // Oldest/Newest invoices
-    else if (messageLower.includes('oldest') || messageLower.includes('old')) {
-      const sortedByDate = [...invoiceList].sort((a, b) => {
-        const dateA = a.invoice_date ? new Date(a.invoice_date).getTime() : 0;
-        const dateB = b.invoice_date ? new Date(b.invoice_date).getTime() : 0;
-        return dateA - dateB;
+    // Create comprehensive context summary
+    const contextSummary = `
+INVOICE DATABASE SUMMARY:
+- Total Unpaid Invoices: ${totalInvoices}
+- Total Outstanding Amount: ${formatCurrency(totalOutstanding)}
+- Overdue Invoices: ${overdueInvoices.length} (Total: ${formatCurrency(totalOverdue)})
+- Due Soon (within 5 days): ${dueSoon.length}
+- Unique Customers: ${new Set(invoiceList.map(inv => inv.customer_name).filter(Boolean)).size}
+- Unique Salespeople: ${new Set(invoiceList.map(inv => inv.salesperson_name).filter(Boolean)).size}
+
+DETAILED INVOICE DATA (showing ${recentInvoices.length} most recent invoices):
+${JSON.stringify(invoiceDataContext, null, 2)}
+
+CURRENCY: All amounts are in Indian Rupees (₹).
+CURRENT DATE: ${new Date().toLocaleDateString()}
+`;
+
+    // System prompt that enforces data-only responses
+    const systemPrompt = `You are an AI assistant for an invoice aging dashboard. Your role is to answer questions about invoice data accurately and precisely.
+
+CRITICAL RULES:
+1. You MUST ONLY answer based on the invoice data provided in the context below
+2. If the answer is not in the provided data, say "I don't have that information in the database" or "That data is not available"
+3. NEVER make up numbers, dates, customer names, or any information
+4. Use the exact data from the context - do not estimate or approximate
+5. Format currency amounts using Indian Rupee (₹) symbol
+6. Be precise with numbers and dates
+7. If asked about data not in the context, clearly state it's not available
+8. Provide specific details when available (invoice numbers, customer names, dates, amounts)
+9. Calculate metrics only from the provided data
+10. Be conversational but factual
+
+Answer the user's question based ONLY on the following invoice data:`;
+
+    // Call OpenAI API
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini', // Using gpt-4o-mini for cost efficiency, can be changed to gpt-4 if needed
+        messages: [
+          {
+            role: 'system',
+            content: `${systemPrompt}\n\n${contextSummary}`,
+          },
+          {
+            role: 'user',
+            content: message,
+          },
+        ],
+        temperature: 0.3, // Lower temperature for more precise, factual responses
+        max_tokens: 500,
       });
-      const oldest = sortedByDate[0];
-      if (oldest) {
-        const daysOld = daysSinceInvoice(oldest);
-        response = `Your oldest unpaid invoice is **${oldest.invoice_number || 'N/A'}** from ${oldest.customer_name || 'Unknown customer'}, dated ${oldest.invoice_date ? new Date(oldest.invoice_date).toLocaleDateString() : 'N/A'}. It's **${daysOld} days old** with a balance of **${formatCurrency(oldest.balance)}**.`;
-      } else {
-        response = 'I could not find the oldest invoice.';
-      }
-    }
-    // Average invoice amount
-    else if (messageLower.includes('average') && messageLower.includes('amount')) {
-      const avgAmount = totalInvoices > 0 ? totalOutstanding / totalInvoices : 0;
-      response = `The average outstanding amount per invoice is **${formatCurrency(avgAmount)}**.`;
-    }
-    // Largest invoice
-    else if (messageLower.includes('largest') || messageLower.includes('biggest') || messageLower.includes('highest')) {
-      const largest = invoiceList.reduce((max, inv) => 
-        (inv.balance || 0) > (max.balance || 0) ? inv : max
-      , invoiceList[0]);
-      if (largest) {
-        response = `Your largest unpaid invoice is **${largest.invoice_number || 'N/A'}** from ${largest.customer_name || 'Unknown customer'} with a balance of **${formatCurrency(largest.balance)}**.`;
-      } else {
-        response = 'I could not find the largest invoice.';
-      }
-    }
-    // Search for specific customer
-    else if (messageLower.includes('invoice') && messageLower.includes('from')) {
-      const customerMatch = message.match(/from\s+([^?]+)/i) || message.match(/for\s+([^?]+)/i);
-      if (customerMatch) {
-        const customerName = customerMatch[1].trim();
-        const customerInvoices = invoiceList.filter((inv) =>
-          inv.customer_name?.toLowerCase().includes(customerName.toLowerCase())
-        );
-        if (customerInvoices.length > 0) {
-          const customerTotal = customerInvoices.reduce((sum, inv) => sum + (inv.balance || 0), 0);
-          response = `${customerName} has **${customerInvoices.length}** unpaid invoice(s) with a total outstanding amount of **${formatCurrency(customerTotal)}**.`;
-        } else {
-          response = `I couldn't find any unpaid invoices for ${customerName}.`;
-        }
-      } else {
-        response = 'Could you please specify which customer you\'re asking about? For example: "How many invoices from [customer name]?"';
-      }
-    }
-    // Help/Greeting
-    else if (
-      messageLower.includes('hello') ||
-      messageLower.includes('hi') ||
-      messageLower.includes('help') ||
-      messageLower.includes('what can you')
-    ) {
-      response = `I can help you with questions about your invoices! Here are some things you can ask me:
 
-• "How many total invoices do I have?"
-• "What's the total outstanding amount?"
-• "How many invoices are overdue?"
-• "What's the total overdue amount?"
-• "How many invoices are due soon?"
-• "How many customers do I have?"
-• "What's my oldest invoice?"
-• "What's my largest invoice?"
-• "What's the average invoice amount?"
-• "How many invoices from [customer name]?"
+      const response = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
 
-Try asking me anything about your invoice data!`;
-    }
-    // Default response
-    else {
-      response = `I understand you're asking about "${message}". Here's a summary of your invoice data:
-
-• **Total Invoices:** ${totalInvoices}
-• **Total Outstanding:** ${formatCurrency(totalOutstanding)}
-• **Overdue Invoices:** ${overdueInvoices.length} (${formatCurrency(totalOverdue)})
-• **Due Soon (within 5 days):** ${dueSoon.length}
-
-You can ask me specific questions like:
-- "How many invoices are overdue?"
-- "What's the total outstanding amount?"
-- "How many customers do I have?"
-- "What's my oldest invoice?"
-
-What would you like to know more about?`;
+      return NextResponse.json({ response });
+    } catch (openaiError: any) {
+      console.error('OpenAI API error:', openaiError);
+      
+      // Fallback to basic response if OpenAI fails
+      return NextResponse.json({
+        response: `I encountered an error with the AI service. Here's a quick summary: You have ${totalInvoices} unpaid invoices with a total outstanding of ${formatCurrency(totalOutstanding)}. Please try again or contact support if the issue persists.`,
+      });
     }
 
-    return NextResponse.json({ response });
   } catch (error) {
     console.error('Chat API error:', error);
     return NextResponse.json(
