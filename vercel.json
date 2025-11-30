@@ -1,4 +1,5 @@
 {
+  "name": "greenads-invoice-dashboard",
   "crons": [
     {
       "path": "/api/sync",

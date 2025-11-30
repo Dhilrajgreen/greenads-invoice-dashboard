@@ -51,7 +51,10 @@ export async function getZohoAccessToken(): Promise<string> {
  * Fetches ALL unpaid invoices from Zoho with pagination support
  * Fetches all unpaid invoices regardless of date
  */
-export async function fetchZohoInvoices(accessToken: string): Promise<ZohoInvoice[]> {
+export async function fetchZohoInvoices(
+  accessToken: string,
+  onProgress?: (message: string, progress?: number) => void
+): Promise<ZohoInvoice[]> {
   const orgId = process.env.ZOHO_ORG_ID;
   if (!orgId) {
     throw new Error('Missing ZOHO_ORG_ID');
@@ -63,7 +66,10 @@ export async function fetchZohoInvoices(accessToken: string): Promise<ZohoInvoic
   let hasMorePages = true;
   let consecutiveEmptyPages = 0;
 
+  onProgress?.('Starting to fetch invoices from Zoho...', 0);
+
   while (hasMorePages) {
+    onProgress?.(`Fetching page ${currentPage}...`, (currentPage - 1) * 10);
     const url = new URL('https://www.zohoapis.com/books/v3/invoices');
     url.searchParams.set('organization_id', orgId);
     url.searchParams.set('status', 'unpaid');
@@ -167,6 +173,8 @@ export async function fetchZohoInvoices(accessToken: string): Promise<ZohoInvoic
     const pageContext = data.page_context || {};
     const hasMorePage = pageContext.has_more_page === true;
     
+    onProgress?.(`Page ${currentPage}: Fetched ${invoices.length} invoices (Total: ${allInvoices.length})`, Math.min((currentPage / 50) * 50, 50));
+    
     console.log(`Page ${currentPage}: Fetched ${invoices.length} invoices (${processedInvoices.length} after filtering), has_more_page: ${hasMorePage}, total so far: ${allInvoices.length}`);
 
     // If we got 0 invoices, increment empty page counter
@@ -204,6 +212,7 @@ export async function fetchZohoInvoices(accessToken: string): Promise<ZohoInvoic
     }
   }
 
+  onProgress?.(`Completed fetching ${allInvoices.length} invoices from Zoho`, 50);
   return allInvoices;
 }
 
