@@ -127,8 +127,11 @@ The context below contains the COMPLETE invoice database. Read it carefully and 
 
     // Call OpenAI API
     try {
+      console.log('Calling OpenAI API with message:', message.substring(0, 50));
+      console.log('Total invoices in context:', totalInvoices);
+      
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Using gpt-4o-mini for cost efficiency, can be changed to gpt-4 if needed
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -139,19 +142,37 @@ The context below contains the COMPLETE invoice database. Read it carefully and 
             content: `Here is the invoice database data:\n\n${contextSummary}\n\nNow answer this question using ONLY the data above: ${message}`,
           },
         ],
-        temperature: 0.2, // Lower temperature for more focused, data-driven responses
+        temperature: 0.2,
         max_tokens: 1000,
       });
 
       const response = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+      
+      console.log('OpenAI response received, length:', response.length);
 
       return NextResponse.json({ response });
     } catch (openaiError: any) {
-      console.error('OpenAI API error:', openaiError);
+      console.error('OpenAI API error details:', {
+        message: openaiError?.message,
+        status: openaiError?.status,
+        code: openaiError?.code,
+        type: openaiError?.type,
+        error: openaiError,
+      });
+      
+      // More detailed error message
+      let errorMessage = 'I encountered an error with the AI service.';
+      if (openaiError?.status === 401) {
+        errorMessage = 'OpenAI API authentication failed. Please check the API key configuration.';
+      } else if (openaiError?.status === 429) {
+        errorMessage = 'OpenAI API rate limit exceeded. Please try again in a moment.';
+      } else if (openaiError?.message) {
+        errorMessage = `AI service error: ${openaiError.message}`;
+      }
       
       // Fallback to basic response if OpenAI fails
       return NextResponse.json({
-        response: `I encountered an error with the AI service. Here's a quick summary: You have ${totalInvoices} unpaid invoices with a total outstanding of ${formatCurrency(totalOutstanding)}. Please try again or contact support if the issue persists.`,
+        response: `${errorMessage} Here's a quick summary: You have ${totalInvoices} unpaid invoices with a total outstanding of ${formatCurrency(totalOutstanding)}.`,
       });
     }
 
