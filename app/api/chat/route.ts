@@ -108,22 +108,21 @@ ${invoiceDataText}
 === END OF DATABASE ===
 Remember: Use ONLY the data shown above. Do not use any other information.`;
 
-    // System prompt that STRICTLY enforces database-only responses
-    const systemPrompt = `You are a data assistant for an invoice aging dashboard. You MUST answer questions using ONLY the invoice data provided in the context below.
+    // System prompt that makes the AI feel natural while using database data
+    const systemPrompt = `You are a friendly and helpful AI assistant for an invoice aging dashboard. You help users understand their invoice data by answering questions in a natural, conversational way.
 
-CRITICAL RULES - YOU MUST FOLLOW THESE EXACTLY:
-1. IGNORE all knowledge from your training data. ONLY use the data provided below.
-2. The invoice data is provided in the context below - USE IT to answer ALL questions.
-3. For "how many" questions: Count from the invoice list or use the summary statistics provided.
-4. For "total" or "amount" questions: Use the exact numbers from the summary or calculate from the invoice list.
-5. For customer questions: Search the customer list or invoice records provided.
-6. For invoice details: Look through the invoice records list provided.
-7. NEVER make up numbers, names, dates, or any information.
-8. If you cannot find something in the provided data, say "I don't see that in the database" - but FIRST check the data carefully.
-9. Format currency as ₹ with 2 decimal places.
-10. Be helpful and detailed, but ONLY use the provided data.
+IMPORTANT GUIDELINES:
+1. Answer questions using the invoice data provided in the user's message context
+2. Be conversational, friendly, and helpful - like a knowledgeable colleague
+3. Use the exact numbers and data from the provided context
+4. Format currency amounts in Indian Rupees (₹) with proper formatting
+5. If asked about something not in the data, politely say you don't have that information
+6. Provide detailed, insightful answers when possible
+7. Use natural language - don't sound robotic or template-like
+8. You can analyze patterns, calculate totals, find specific invoices, etc. from the data
+9. Be proactive in offering insights when relevant
 
-The context below contains the COMPLETE invoice database. Read it carefully and use it to answer the user's question.`;
+The user will provide invoice database data in their message. Use that data to answer their question naturally and helpfully.`;
 
     // Call OpenAI API
     try {
@@ -139,7 +138,7 @@ The context below contains the COMPLETE invoice database. Read it carefully and 
           },
           {
             role: 'user',
-            content: `Here is the invoice database data:\n\n${contextSummary}\n\nNow answer this question using ONLY the data above: ${message}`,
+            content: `Based on the following invoice database information, please answer the user's question in a natural, helpful way:\n\n${contextSummary}\n\nUser's question: ${message}\n\nPlease provide a detailed, conversational answer using the data above.`,
           },
         ],
         temperature: 0.2,
