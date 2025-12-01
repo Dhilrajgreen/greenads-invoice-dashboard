@@ -141,8 +141,8 @@ The user will provide invoice database data in their message. Use that data to a
             content: `Based on the following invoice database information, please answer the user's question in a natural, helpful way:\n\n${contextSummary}\n\nUser's question: ${message}\n\nPlease provide a detailed, conversational answer using the data above.`,
           },
         ],
-        temperature: 0.2,
-        max_tokens: 1000,
+        temperature: 0.7, // Higher temperature for more natural, conversational responses
+        max_tokens: 1500,
       });
 
       const response = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
